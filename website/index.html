@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="stylesheet" href="./css/leaflet-sidebar.css" />
+
+  <style>
+  html, body, #map {
+    height: 100%;
+    font: 10pt "Helvetica Neue", Arial, Helvetica, sans-serif;
+  }
+
+  .lorem {
+    font-style: italic;
+    color: #AAA;
+  }
+
+html, body, #map {
+  height: 100%;
+  font: 10pt "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+
+.lorem {
+  font-style: italic;
+  color: #AAA;
+}
+
+
+html, body{
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+#map {
+  height: 100%;
+  width: 100%;
+}
+  </style>
+</head>
+
+<body>
+  <div id="sidebar" class="sidebar collapsed">
+    <div class="sidebar-tabs">
+      <ul role="tablist">
+        <li><a href="#home" role="tab"><i class="fa-solid fa-magnifying-glass"></i></a></li>
+      </ul>
+    </div>
+    <div class="sidebar-content bg-white dark:bg-gray-800">
+      <div class="sidebar-pane" id="home">
+        <h1 class="sidebar-header">
+          Trackers
+          <span class="sidebar-close"><i class="fa fa-caret-left"></i></span>
+        </h1>
+        <div class="px-4 py-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
+          <button 
+            class="text-sm text-indigo-600 hover:underline focus:outline-none"
+            onclick="setAllTrackersVisibility(true)">
+            Show All
+          </button>   
+          <button 
+            class="text-sm text-indigo-600 hover:underline focus:outline-none"
+            onclick="setAllTrackersVisibility(false)">
+            Hide All
+          </button>
+        </div>
+        <div class="flex-1 overflow-auto p-2 space-y-4" id="trackersList"></div>
+      </div>
+    </div>
+  </div>
+  <div id="map" class="sidebar-map"></div>
+  <script src="./js/leaflet-sidebar.js"></script>
+  <script src="./js/script.js"></script>
+</body>
+</html>

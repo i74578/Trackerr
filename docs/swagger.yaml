@@ -1,0 +1,533 @@
+basePath: /api/v1
+definitions:
+  api.CommandReq:
+    properties:
+      command:
+        minLength: 1
+        type: string
+    required:
+    - command
+    type: object
+  api.CreateModelReq:
+    properties:
+      init_commands:
+        minLength: 1
+        type: string
+      name:
+        minLength: 2
+        type: string
+      success_keywords:
+        minLength: 1
+        type: string
+    required:
+    - init_commands
+    - name
+    - success_keywords
+    type: object
+  api.LocationResponse:
+    properties:
+      heading:
+        type: integer
+      lat:
+        type: integer
+      lon:
+        type: integer
+      speed:
+        type: integer
+      timestamp:
+        type: string
+    type: object
+  api.NameRes:
+    properties:
+      name:
+        type: string
+    type: object
+  api.RegisterTrackerReq:
+    properties:
+      enabled:
+        type: boolean
+      id:
+        maxLength: 15
+        minLength: 12
+        type: string
+      model:
+        minLength: 2
+        type: string
+      name:
+        maxLength: 32
+        minLength: 1
+        type: string
+      owner:
+        type: integer
+      phoneNumber:
+        minLength: 8
+        type: string
+    required:
+    - enabled
+    - id
+    - model
+    - name
+    - phoneNumber
+    type: object
+  api.StringResultRes:
+    properties:
+      result:
+        type: string
+    type: object
+  api.TrackerResponse:
+    properties:
+      connected:
+        type: boolean
+      enabled:
+        type: boolean
+      heading:
+        type: integer
+      id:
+        type: string
+      lastConnected:
+        type: string
+      lat:
+        type: integer
+      lon:
+        type: integer
+      model:
+        type: string
+      name:
+        type: string
+      owner:
+        type: integer
+      phoneNumber:
+        type: string
+      speed:
+        type: integer
+      timestamp:
+        type: string
+    type: object
+  model.Model:
+    properties:
+      init_commands:
+        type: string
+      name:
+        type: string
+      success_keywords:
+        type: string
+    type: object
+host: api.banjo.dev:8080
+info:
+  contact: {}
+  description: API for Trackerr service.
+  title: Trackerr
+  version: "1.0"
+paths:
+  /models:
+    get:
+      description: Get a list of all tracker models currently supported
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Model'
+            type: array
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get list of tracker models
+      tags:
+      - Models
+    post:
+      consumes:
+      - application/json
+      description: Add support for new model, by specifing which SMS messages should
+        be sent when the tracker model is provisioned. The tracker model, must support
+        GT06 or JT808, to work.
+      parameters:
+      - description: Register model payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateModelReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "400":
+          description: failed to parse OR API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR You don't have access to this feature
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "500":
+          description: failed
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Create model
+      tags:
+      - Models
+  /models/{name}:
+    delete:
+      description: Remove support for tracker model
+      parameters:
+      - description: Model name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR You don't have access to this feature
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "500":
+          description: failed
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete model
+      tags:
+      - Models
+    get:
+      parameters:
+      - description: Model name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Model'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "404":
+          description: Model was not found
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get model by name
+      tags:
+      - Models
+  /trackers:
+    get:
+      description: If the user is a admin, it will respond with a list of all trackers
+        in the system, and if the user is a regular user, it will return all trackers
+        owned by the user,
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/api.TrackerResponse'
+            type: array
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get list of trackers
+      tags:
+      - Trackers
+    post:
+      consumes:
+      - application/json
+      description: Register tracking by supplying all properties of a tracker
+      parameters:
+      - description: Register tracker payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.RegisterTrackerReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Success
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "400":
+          description: failed to parse OR API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "403":
+          description: This action requires admin permissions
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "409":
+          description: Tracker with identical id or name already exists
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Register tracker
+      tags:
+      - Trackers
+  /trackers/{id}:
+    delete:
+      parameters:
+      - description: TrackerID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR not allowed to access tracker
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "500":
+          description: failed
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Deregister tracker by id
+      tags:
+      - Trackers
+    get:
+      parameters:
+      - description: TrackerID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.TrackerResponse'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR not allowed to access tracker
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "403":
+          description: You don't have a tracker registered with the specified id
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "404":
+          description: Tracker not found
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get tracker by id
+      tags:
+      - Trackers
+  /trackers/{id}/command:
+    post:
+      consumes:
+      - application/json
+      description: Send upstream command to specified tracker, and get tracker response.
+        The request will fail if the tracker is not currently connected. Additionally
+        the request may timeout, if the tracker is connected but does not response.
+        This can happen if the tracker has entered sleep mode without first closing
+        the TCP connection
+      parameters:
+      - description: TrackerID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Command
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.CommandReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RESPONSE
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "400":
+          description: failed to parse OR API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR not allowed to access tracker
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "503":
+          description: The tracker is not connected
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Send command
+      tags:
+      - Commands
+  /trackers/{id}/location:
+    get:
+      description: Get the latest location data event reported by specified tracker
+      parameters:
+      - description: TrackerID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.LocationResponse'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR not allowed to access tracker
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "404":
+          description: No location entry found
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get tracker location
+      tags:
+      - Location
+  /trackers/{id}/locations:
+    get:
+      description: Get a array with all location data events reported by specified
+        tracker
+      parameters:
+      - description: TrackerID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/api.LocationResponse'
+              type: array
+            type: array
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key OR not allowed to access tracker
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "404":
+          description: No location entry found
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Get tracker locations
+      tags:
+      - Location
+  /whoami:
+    get:
+      description: Fetch the user/organization name associated with the used API key.
+        This can be used to detect if a api-key is valid
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: NAME OF USER/ORGANISATION
+          schema:
+            $ref: '#/definitions/api.NameRes'
+        "400":
+          description: API key required
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+        "401":
+          description: Invalid API key
+          schema:
+            $ref: '#/definitions/api.StringResultRes'
+      security:
+      - ApiKeyAuth: []
+      summary: Whoami
+      tags:
+      - Authentication
+schemes:
+- http
+- https
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"
