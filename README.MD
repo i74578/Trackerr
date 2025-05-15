@@ -36,7 +36,7 @@ cd backend && make && make run
 ### Website
 4. Before using the website, the baseurl variable must be set to the API server used.
 ```
-nano nano js/script.js
+nano  website/js/script.js
 ```
 5. Launch website
 #### Option A: open directly
