@@ -2,6 +2,8 @@
 This repository contains the source files used in my bachelor thesis titled, "Unlocking the Potential of Cheap GPS Trackers" at Technical University of Denmark.
 In the thesis a software solution is developed. Its purpose is to provide a lightweight, service allowing companies to easily integrate low-cost GPS trackers into existing solutions. 
 
+Test
+
 ## Preview
 <p align="center">
   <img src="docs/screenshots/website.png" width="60%">
