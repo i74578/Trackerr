@@ -136,7 +136,7 @@
 
 .sidebar-left ~ .sidebar-map {
   margin-left: 0px; }
-R @media (min-width: 768px) {
+@media (min-width: 768px) {
     .sidebar-left ~ .sidebar-map {
       margin-left: 0; } }
 

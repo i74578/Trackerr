@@ -1,0 +1,76 @@
+/* Consolidated base styles moved from inline <style> in index.html */
+html, body, #map {
+  height: 100%;
+  font: 10pt "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+#map {
+  width: 100%;
+}
+.lorem {
+  font-style: italic;
+  color: #AAA;
+}
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(2px);
+  z-index: 3000;
+  transition: opacity .3s ease;
+}
+.loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.spinner {
+  width: 42px;
+  height: 42px;
+  border: 5px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+.loading-text { font-size: 0.9rem; color: #374151; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-color-scheme: dark) {
+  .loading-overlay { background: rgba(17,24,39,0.85); }
+  .spinner { border: 5px solid #374151; border-top-color: #818cf8; }
+  .loading-text { color: #e5e7eb; }
+}
+
+/* Playback panel styles */
+.playback-panel {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2500;
+  width: min(420px, 90%);
+  background: rgba(255,255,255,0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.12);
+  padding: 10px;
+}
+.playback-panel.hidden { display: none; }
+.playback-row { display:flex; align-items:center; justify-content:space-between; gap: 8px; margin-bottom: 6px; }
+.playback-panel .label { font-size: 0.9rem; color: #111827; }
+.playback-panel .controls { display:flex; align-items:center; gap:6px; }
+.playback-panel .btn { padding: 4px 8px; font-size: 0.85rem; border: 1px solid #d1d5db; border-radius: 6px; background:#fff; cursor:pointer; }
+.playback-panel .btn:hover { background: #f3f4f6; }
+.playback-panel .select { padding: 3px 6px; font-size: 0.85rem; border:1px solid #d1d5db; border-radius:6px; background:#fff; }
+.playback-panel input[type="range"] { width: 100%; }
+@media (prefers-color-scheme: dark){
+  .playback-panel { background: rgba(31,41,55,0.92); border-color: #374151; }
+  .playback-panel .label { color: #e5e7eb; }
+  .playback-panel .btn { background: #111827; color: #e5e7eb; border-color: #374151; }
+  .playback-panel .btn:hover { background: #1f2937; }
+  .playback-panel .select { background: #111827; color:#e5e7eb; border-color:#374151; }
+}

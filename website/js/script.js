@@ -1,4 +1,4 @@
-const baseurl = "https://api.banjo.dev:8080/api/v1/";
+const baseurl = "";
 const apiKey = new URLSearchParams(document.location.search).get("api-key");
 
 // Leaflet map
@@ -6,6 +6,18 @@ let map;
 
 // hashmap of trackers
 const trackers = new Map();
+
+// Playback state
+let playback = {
+    trackerId: null,
+    latlngs: [],
+    rawPoints: [],
+    index: 0,
+    playing: false,
+    timerId: null,
+    speed: 1, // 1x, 2x, 4x
+    marker: null
+};
 
 /**
 * Handle clicks for the show On Map checkbox for each tracker
@@ -20,9 +32,9 @@ function onTrackerVisibilityToggle(checkbox){
 /**
 * Set the visibility for all trackers
 * @param {boolean} visible - Visiblity of all tracker to set
-    */
+*/
 function setAllTrackersVisibility(visible){
-    trackers.values().forEach(tracker => setTrackerVisibility(tracker,visible));
+    trackers.forEach((tracker) => setTrackerVisibility(tracker, visible));
 }
 
 /**
@@ -36,8 +48,10 @@ function setTrackerVisibility(tracker,visible){
         tracker.Visible = visible;
         if (tracker.Visible){
             tracker.Marker.addTo(map);
+            if (tracker.Polyline){ tracker.Polyline.addTo(map); }
         } else {
             tracker.Marker.remove();
+            if (tracker.Polyline){ tracker.Polyline.remove(); }
         }
     }
 
@@ -68,7 +82,14 @@ function handleGoToTracker(button){
         window.alert("There is no available location data for selected tracker")
     }
     else {
-        zoomToTracker(t);
+        // history range selection
+        const windowMs = getSelectedRangeWindowMs();
+        if (windowMs === 0){
+            stopPlayback();
+            zoomToTracker(t);
+            return;
+        }
+        showHistoryAndAnimateByWindow(t, windowMs);
     }
 
 }
@@ -188,6 +209,28 @@ function updateMarker(tracker){
 }
 
 /**
+ * Fetch last N locations and render a polyline for a tracker
+ * @param {Object} tracker
+ * @param {number} limit
+ */
+async function renderTrackHistory(tracker, limit=50){
+    try{
+        const data = await apiGet(`trackers/${tracker.Id}/locations?limit=${limit}`);
+        if (!Array.isArray(data) || data.length === 0){ return; }
+        const latlngs = data.map(p => [p.Lat/2000000, p.Lon/2000000]);
+        if (latlngs.length < 2){ return; }
+        // remove existing polyline
+        if (tracker.Polyline){ tracker.Polyline.remove(); }
+        tracker.Polyline = L.polyline(latlngs, {color:'#2563eb', weight:3, opacity:0.9});
+        if (tracker.Visible){ tracker.Polyline.addTo(map); }
+        const bounds = tracker.Polyline.getBounds();
+        if (bounds && bounds.isValid()){ map.fitBounds(bounds.pad(0.2)); }
+    } catch(e){
+        console.warn('Failed to render history for', tracker.Id, e);
+    }
+}
+
+/**
  * Store trackers in global variable, create markers for each 
  * @param {Array} data - List af tracker data from API
  */
@@ -196,12 +239,175 @@ async function initiateTrackers(data){
     markericon.options.shadowSize = [0,0];
     data.forEach((tracker) => {
         tracker.Visible = true;
-        tracker.Marker = new L.Marker({icon:markericon});
+        tracker.Polyline = null;
+        tracker.Marker = L.marker([0,0], {icon: markericon});
         trackers.set(tracker.Id,tracker);  
         updateTrackerLocation(tracker,tracker)
         tracker.Marker.addTo(map)
     });
 }
+
+/** Map history ranges to window size in milliseconds */
+function getSelectedRangeWindowMs(){
+    const sel = document.getElementById('historyRange');
+    const v = sel ? sel.value : 'off';
+    switch(v){
+        case '15m': return 15*60*1000;
+        case '1h': return 60*60*1000;
+        case '6h': return 6*60*60*1000;
+        case '24h': return 24*60*60*1000;
+        case 'off':
+        default: return 0;
+    }
+}
+
+/** Fetch, render history and start playback for a tracker using a time window (ms) ending now */
+async function showHistoryAndAnimateByWindow(tracker, windowMs){
+    try{
+        const end = new Date();
+        const start = new Date(end.getTime() - windowMs);
+        const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+        const data = await apiGet(`trackers/${tracker.Id}/locations?${params.toString()}`);
+        if (!Array.isArray(data) || data.length < 2){
+            window.alert('Not enough history data to play route');
+            return;
+        }
+        const latlngs = data.map(p => [p.Lat/2000000, p.Lon/2000000]);
+        // Render polyline
+        if (tracker.Polyline){ tracker.Polyline.remove(); }
+        tracker.Polyline = L.polyline(latlngs, {color:'#6366f1', weight:4, opacity:0.6});
+        if (tracker.Visible){ tracker.Polyline.addTo(map); }
+        const bounds = tracker.Polyline.getBounds();
+        if (bounds && bounds.isValid()){ map.fitBounds(bounds.pad(0.15)); }
+        // Start playback
+        startPlayback(tracker, latlngs, data);
+    } catch(e){
+        console.warn('Failed to load history for', tracker.Id, e);
+        window.alert('Failed to load history');
+    }
+}
+
+function startPlayback(tracker, latlngs, rawPoints){
+    stopPlayback(); // ensure only one playback at a time
+    playback.trackerId = tracker.Id;
+    playback.latlngs = latlngs;
+    playback.rawPoints = rawPoints;
+    playback.index = 0;
+    playback.playing = true;
+    playback.speed = Number(document.getElementById('playbackSpeed')?.value || 1);
+    // Create or reuse marker
+    const start = latlngs[0];
+    playback.marker = L.circleMarker(start, {radius:6, color:'#1f2937', weight:2, fillColor:'#22c55e', fillOpacity:0.9});
+    if (tracker.Visible){ playback.marker.addTo(map); }
+    // Show panel
+    updatePlaybackPanel(true, tracker);
+    scheduleNextFrame();
+}
+
+function scheduleNextFrame(){
+    clearTimeout(playback.timerId);
+    if (!playback.playing) return;
+    const stepMs = Math.max(16, 60 - (playback.speed*10)); // rough speed scaler
+    playback.timerId = setTimeout(playbackFrame, stepMs);
+}
+
+function playbackFrame(){
+    if (!playback.playing) return;
+    if (playback.index >= playback.latlngs.length - 1){
+        // Reached end
+        playback.playing = false;
+        updatePlayPauseButton();
+        return;
+    }
+    stepToIndex(playback.index + 1);
+    scheduleNextFrame();
+}
+
+function togglePlayback(){
+    if (!playback.latlngs.length) return;
+    playback.playing = !playback.playing;
+    updatePlayPauseButton();
+    if (playback.playing){ scheduleNextFrame(); }
+}
+
+function stopPlayback(){
+    clearTimeout(playback.timerId);
+    if (playback.marker){ playback.marker.remove(); }
+    playback = { trackerId: null, latlngs: [], rawPoints: [], index: 0, playing: false, timerId: null, speed: 1, marker: null };
+    updatePlaybackPanel(false);
+}
+
+function scrubPlayback(percent){
+    if (!playback.latlngs.length) return;
+    const idx = Math.round((Number(percent)/100) * (playback.latlngs.length-1));
+    stepToIndex(idx);
+}
+
+function setPlaybackSpeed(v){
+    playback.speed = Number(v) || 1;
+}
+
+function updatePlaybackPanel(show, tracker){
+    const panel = document.getElementById('playbackPanel');
+    if (!panel) return;
+    if (show){
+        panel.classList.remove('hidden');
+        const label = document.getElementById('playbackLabel');
+        if (label && tracker){ label.textContent = `Route playback – ${tracker.Name || tracker.Id}`; }
+        updatePlayPauseButton();
+        const slider = document.getElementById('playbackProgress');
+        if (slider){ slider.value = '0'; }
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
+function updatePlayPauseButton(){
+    const btn = document.getElementById('btnPlayPause');
+    if (!btn) return;
+    btn.textContent = playback.playing ? 'Pause' : 'Play';
+}
+
+function stepToIndex(newIndex){
+    const clamped = Math.max(0, Math.min(playback.latlngs.length-1, newIndex));
+    playback.index = clamped;
+    const p = playback.latlngs[playback.index];
+    if (playback.marker){ playback.marker.setLatLng(p); }
+    // Update slider
+    const progress = Math.round((playback.index/(playback.latlngs.length-1))*100);
+    const slider = document.getElementById('playbackProgress');
+    if (slider){ slider.value = String(progress); }
+    // Update point info (timestamp + speed/heading if present)
+    const info = document.getElementById('pointInfo');
+    if (info && playback.rawPoints.length){
+        const r = playback.rawPoints[playback.index];
+        const ts = r.Timestamp ? new Date(r.Timestamp).toLocaleString() : '';
+        const sp = r.Speed != null ? ` • speed: ${r.Speed}` : '';
+        const hd = r.Heading != null ? ` • heading: ${r.Heading}` : '';
+        info.textContent = `Point ${playback.index+1}/${playback.latlngs.length} • ${ts}${sp}${hd}`;
+    }
+}
+
+function stepForward(){
+    if (!playback.latlngs.length) return;
+    // Pausing ensures deterministic stepping
+    if (playback.playing){ playback.playing = false; updatePlayPauseButton(); }
+    stepToIndex(playback.index + 1);
+}
+
+function stepBack(){
+    if (!playback.latlngs.length) return;
+    if (playback.playing){ playback.playing = false; updatePlayPauseButton(); }
+    stepToIndex(playback.index - 1);
+}
+
+// Optional: keyboard shortcuts for stepping
+document.addEventListener('keydown', (e) => {
+    const panel = document.getElementById('playbackPanel');
+    if (panel && panel.classList.contains('hidden')) return;
+    if (e.key === 'ArrowRight') { stepForward(); }
+    if (e.key === 'ArrowLeft') { stepBack(); }
+});
 
 /**
  * Fetch data from API of all trackers, and update tracker properties
@@ -223,20 +429,32 @@ async function refreshTrackers(){
  * @returns {Promise<Array>} - List of trackers API data
  */
 async function fetchTrackers(){
-    return fetch(baseurl+"trackers", {
-        method: "GET",
-        headers: {
-            "X-API-Key": `${apiKey}`,
-            "Content-Type": "application/json"
-        }
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Error. Statuscode: ${response.status}`);
+    return apiGet("trackers");
+}
+
+/**
+ * Small fetch helper for GET requests that adds headers and error handling
+ * @param {string} path - API path under baseurl
+ * @returns {Promise<any>} - Parsed JSON response
+ */
+async function apiGet(path){
+    try{
+        const res = await fetch(baseurl+path, {
+            method: "GET",
+            headers: {
+                "X-API-Key": `${apiKey}`,
+                "Content-Type": "application/json"
             }
-            return response.json();
-        })
-        .catch(error => console.error("Error:", error));
+        });
+        if (!res.ok){
+            const text = await res.text();
+            throw new Error(`GET ${path} failed: ${res.status} ${text}`);
+        }
+        return res.json();
+    } catch (err){
+        console.error(err);
+        throw err;
+    }
 }
 
 /*
@@ -256,8 +474,11 @@ async function initializeMapAndTracker(){
 
     const trackersData = await fetchTrackersPromise;
     // Add trackers to map after fetching has completed, and the map is loaded
-    initiateTrackers(trackersData);
+    await initiateTrackers(trackersData);
     renderTrackersList();
+    // hide loading overlay
+    const loading = document.getElementById("loading");
+    if (loading){ loading.classList.add("hidden"); loading.setAttribute("aria-busy","false"); }
 
     // Load sidebar
     let sidebar = L.control.sidebar('sidebar').addTo(map);
@@ -274,25 +495,17 @@ async function validateApiKey(){
         window.alert("Invalid URL. URL must specify an API KEY");
         return false;
     }
-    return await fetch(baseurl+"whoami", {
-        method: "GET",
-        headers: {
-            "X-API-Key": `${apiKey}`,
-            "Content-Type": "application/json"
+    try{
+        await apiGet("whoami");
+        return true;
+    } catch (err){
+        if (String(err).includes("401")){
+            window.alert("API key is invalid");
+        } else {
+            window.alert("Failed to validate API key");
         }
-    })
-        .then(response => {
-            if (response.ok){
-                return true
-            }
-            if (response.status == 401){
-                window.alert("API key is invalid");
-            }
-            else {
-                window.alert("Failed to validate API key")
-            }
-            return false;
-        })
+        return false;
+    }
 }
 
 /*
