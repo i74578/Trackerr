@@ -50,7 +50,7 @@ func GetTrackerLocationHistoryRange(trackerID string, start int64, end int64) ([
 		start = end
 		end = tmp
 	}
-	rows, err := db.Query("SELECT entryId,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", trackerID, start, end)
+	rows, err := db.Query("SELECT id,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", trackerID, start, end)
 	if err != nil {
 		return ld, fmt.Errorf("no history found for tracker: %v", err)
 	}
@@ -70,7 +70,7 @@ func GetTrackerLocationHistoryRange(trackerID string, start int64, end int64) ([
 func GetTrackerLocationHistoryLimit(trackerID string, limit int) ([]model.Locationdata, error) {
 	var ld []model.Locationdata
 	// Create and run SQL query - order by timestamp descending and limit the number of rows
-	rows, err := db.Query("SELECT entryId,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? ORDER BY timestamp DESC LIMIT ?", trackerID, limit)
+	rows, err := db.Query("SELECT id,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? ORDER BY timestamp DESC LIMIT ?", trackerID, limit)
 	if err != nil {
 		return ld, fmt.Errorf("no history found for tracker:%v", err)
 	}
