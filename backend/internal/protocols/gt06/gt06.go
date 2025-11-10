@@ -1,8 +1,6 @@
 package gt06
 
 import (
-	"banjo.dev/trackerr/internal/model"
-	"banjo.dev/trackerr/internal/utils"
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
@@ -10,6 +8,9 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"banjo.dev/trackerr/internal/model"
+	"banjo.dev/trackerr/internal/utils"
 )
 
 // Constants specific to GT06
@@ -59,7 +60,7 @@ var alarmTypes = map[uint8]string{
 // Perform GT06 authentication after receiving first packet p
 func PerformAuth(conn net.Conn, p model.Packet) (string, error) {
 	if p.PacketType != uint16(MsgTypeLogin) {
-		return "", fmt.Errorf("Invalid login message type")
+		return "", fmt.Errorf("invalid login message type")
 	}
 	imei := hex.EncodeToString(p.Payload)[1:] //Ignore first byte,
 	// Send login response
@@ -77,13 +78,13 @@ func ParseMsg(conn io.Reader, extended bool) (model.Packet, error) {
 	if extended {
 		pl, err = utils.ReadBytes(conn, 2)
 		if err != nil {
-			return p, fmt.Errorf("Failed to read 2 byte packet length: %v", err)
+			return p, fmt.Errorf("failed to read 2 byte packet length: %v", err)
 		}
 		p.PayloadLength = binary.BigEndian.Uint16(pl)
 	} else {
 		pl, err = utils.ReadBytes(conn, 1)
 		if err != nil {
-			return p, fmt.Errorf("Failed to read 1 byte packet length: %v", err)
+			return p, fmt.Errorf("failed to read 1 byte packet length: %v", err)
 		}
 		p.PayloadLength = uint16(pl[0])
 	}
@@ -91,7 +92,7 @@ func ParseMsg(conn io.Reader, extended bool) (model.Packet, error) {
 	// Read protocol number
 	pn, err := utils.ReadBytes(conn, 1)
 	if err != nil {
-		return p, fmt.Errorf("Failed to read protocol number: %v", err)
+		return p, fmt.Errorf("failed to read protocol number: %v", err)
 	}
 
 	// Map protocol number as packet type
@@ -100,20 +101,20 @@ func ParseMsg(conn io.Reader, extended bool) (model.Packet, error) {
 	// Read packet data
 	p.Payload, err = utils.ReadBytes(conn, int(p.PayloadLength)-5)
 	if err != nil {
-		return p, fmt.Errorf("Error reading payload: %v", err)
+		return p, fmt.Errorf("error reading payload: %v", err)
 	}
 
 	// Read trailer
 	trailer, err := utils.ReadBytes(conn, 4)
 	if err != nil {
-		return p, fmt.Errorf("Error reading trailer: %v", err)
+		return p, fmt.Errorf("error reading trailer: %v", err)
 	}
 	p.SerialNumber = binary.BigEndian.Uint16(trailer[0:2])
 	p.ErrorCheck = binary.BigEndian.Uint16(trailer[2:4])
 
 	// Read stop byte
 	if end, err := utils.ReadBytes(conn, 2); err != nil || end[0] != 0x0d || end[1] != 0x0a {
-		return p, fmt.Errorf("Invalid stop bytes: %v", err)
+		return p, fmt.Errorf("invalid stop bytes: %v", err)
 	}
 
 	// Put data for used for CRC in buffer
@@ -126,7 +127,7 @@ func ParseMsg(conn io.Reader, extended bool) (model.Packet, error) {
 	// Calculate CRC code
 	crcdata := buf.Bytes()
 	if utils.CRCITU(crcdata) != p.ErrorCheck {
-		return p, fmt.Errorf("Invalid error check code")
+		return p, fmt.Errorf("invalid error check code")
 	}
 
 	return p, nil
@@ -184,7 +185,8 @@ func SendMsg(conn net.Conn, extended bool, msgtype uint8, payload []byte, serial
 	if extended {
 		buf.Write([]byte{StartByteExtended, StartByteExtended})
 		// Extended messages use 2 bytes for message length
-		binary.Write(buf, binary.BigEndian, mlen)
+		// mlen is an int; convert to uint16 for fixed-size binary write
+		binary.Write(buf, binary.BigEndian, uint16(mlen))
 		ecoffset = 3
 	} else {
 		buf.Write([]byte{StartByte, StartByte})
@@ -198,7 +200,6 @@ func SendMsg(conn net.Conn, extended bool, msgtype uint8, payload []byte, serial
 	binary.Write(buf, binary.BigEndian, utils.CRCITU(buf.Bytes()[ecoffset:]))
 	buf.Write([]byte{EndByte1, EndByte2})
 	conn.Write(buf.Bytes())
-	return
 }
 
 // Send command message

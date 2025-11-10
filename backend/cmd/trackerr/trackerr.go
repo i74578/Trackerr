@@ -1,6 +1,12 @@
 package main
 
 import (
+	"io"
+	"log"
+	"net"
+	"os"
+	"time"
+
 	"banjo.dev/trackerr/internal/api"
 	"banjo.dev/trackerr/internal/database"
 	"banjo.dev/trackerr/internal/model"
@@ -9,11 +15,6 @@ import (
 	"banjo.dev/trackerr/internal/protocols/jt808"
 	"banjo.dev/trackerr/internal/utils"
 	"github.com/joho/godotenv"
-	"io"
-	"log"
-	"net"
-	"os"
-	"time"
 )
 
 // @title           Trackerr
@@ -120,7 +121,7 @@ func tcpserver(TRACKERCOM_PORT string, tm *model.TrackerManager) {
 
 func handleTracker(tm *model.TrackerManager, conn net.Conn) {
 	// Authenticate tracker
-	trackerId, err, protocol := protocols.PerformAuth(conn)
+	trackerId, protocol, err := protocols.PerformAuth(conn)
 	if err != nil {
 		log.Println("Handshake failed: ", err)
 		conn.Close()
@@ -196,7 +197,7 @@ func handleGT06Connection(t *model.TrackerHandler) {
 			log.Printf("%v: Sent: %v\n", t.Id, cmd)
 		default:
 			// Read and parse packet, using a 1s deadline
-			p, err, _ := protocols.ParseMsg(t.Conn, 1*time.Second)
+			p, _, err := protocols.ParseMsg(t.Conn, 1*time.Second)
 
 			if err != nil {
 				// Continue if there is no packet to read
@@ -215,6 +216,7 @@ func handleGT06Connection(t *model.TrackerHandler) {
 			case gt06.MsgTypeLocation, gt06.MsgTypeLocation4g:
 				ld := gt06.ParseLocationMsg(p.Payload)
 				ld.TrackerId = t.Id
+				ld.Timestamp = time.Now().Unix()
 				log.Printf("%v: Position: %v\n", t.Id, utils.StringifyCoordinates(ld.Lat, ld.Lon))
 				t.EventHandler <- ld
 			// Heartbeat
@@ -290,7 +292,7 @@ func handleJT808Connection(t *model.TrackerHandler) {
 			resChannelQueue = append(resChannelQueue, cmd.Response)
 
 		default:
-			p, err, _ := protocols.ParseMsg(t.Conn, 1*time.Second)
+			p, _, err := protocols.ParseMsg(t.Conn, 1*time.Second)
 			if err != nil {
 				// No TCP packet in buffer
 				if err, ok := err.(net.Error); ok && err.Timeout() {

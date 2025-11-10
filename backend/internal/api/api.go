@@ -1,15 +1,19 @@
 package api
 
 import (
+	"log"
+	"maps"
+	"net/http"
+	"os"
+	"fmt"
+	"slices"
+	"strconv"
+	"time"
+
 	"banjo.dev/trackerr/internal/database"
 	"banjo.dev/trackerr/internal/model"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"log"
-	"maps"
-	"net/http"
-	"slices"
-	"time"
 )
 
 // Only used by swagger
@@ -70,7 +74,14 @@ var tm *model.TrackerManager
 
 func StartAPI(tmIn *model.TrackerManager, apiPort string, certPath string, certKeyPath string) {
 	tm = tmIn
-	gin.SetMode(gin.ReleaseMode)
+	// Set gin mode from environment variable GIN_MODE (loaded via .env in main).
+	// If not provided, default to release mode.
+	mode := os.Getenv("GIN_MODE")
+	if mode == "" {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(mode)
+	}
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -163,8 +174,6 @@ func OwnershipMiddleware() gin.HandlerFunc {
 		}
 		c.JSON(http.StatusUnauthorized, gin.H{"result": "You don't have a tracker registered with the specified id"})
 		c.Abort()
-		return
-		c.Next()
 	}
 }
 
@@ -502,7 +511,87 @@ func getTrackerLocation(c *gin.Context) {
 // @Security     ApiKeyAuth
 func getTrackerLocations(c *gin.Context) {
 	id := c.Param("id")
+	// Optional query parameters: ?limit=N or ?start=RFC3339|unix&end=RFC3339|unix
+	// If start/end are provided, they take precedence over limit.
+	startQ := c.Query("start")
+	endQ := c.Query("end")
+	if startQ != "" || endQ != "" {
+		// Parse start and end
+		var start, end int64
+		var err error
+		// default end to now if missing
+		if endQ == "" {
+			end = time.Now().Unix()
+		} else {
+			end, err = parseTimeQuery(endQ)
+			if err != nil {
+				c.IndentedJSON(http.StatusBadRequest, gin.H{"result": "invalid end parameter"})
+				return
+			}
+		}
+		if startQ == "" {
+			// default start to 24 hours before end if missing
+			start = end - 24*3600
+		} else {
+			start, err = parseTimeQuery(startQ)
+			if err != nil {
+				c.IndentedJSON(http.StatusBadRequest, gin.H{"result": "invalid start parameter"})
+				return
+			}
+		}
+		ld, err := database.GetTrackerLocationHistoryRange(id, start, end)
+		if err != nil || len(ld) == 0 {
+			c.IndentedJSON(http.StatusNotFound, gin.H{"result": "No location entry found"})
+			return
+		}
+		lh := make([]LocationResponse, len(ld))
+		for i := 0; i < len(ld); i++ {
+			tm := timeToString(ld[i].Timestamp)
+			lh[i] = LocationResponse{Timestamp: &tm, Lat: &ld[i].Lat, Lon: &ld[i].Lon, Speed: &ld[i].Speed, Heading: &ld[i].Heading}
+		}
+		c.IndentedJSON(http.StatusOK, lh)
+		return
+	}
+
+	// Optional query parameter: ?limit=N to fetch only the last N locations
+	limitStr := c.Query("limit")
+	if limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 {
+			c.IndentedJSON(http.StatusBadRequest, gin.H{"result": "invalid limit parameter"})
+			return
+		}
+		ld, err := database.GetTrackerLocationHistoryLimit(id, limit)
+		if err != nil {
+			c.IndentedJSON(http.StatusNotFound, gin.H{"result": "No location entry found"})
+			return
+		}
+		// DB returns latest-first (DESC). Return chronological order (oldest -> newest) to callers.
+		for i, j := 0, len(ld)-1; i < j; i, j = i+1, j-1 {
+			ld[i], ld[j] = ld[j], ld[i]
+		}
+		lh := make([]LocationResponse, len(ld))
+		for i := 0; i < len(ld); i++ {
+			tm := timeToString(ld[i].Timestamp)
+			lh[i] = LocationResponse{Timestamp: &tm, Lat: &ld[i].Lat, Lon: &ld[i].Lon, Speed: &ld[i].Speed, Heading: &ld[i].Heading}
+		}
+		c.IndentedJSON(http.StatusOK, lh)
+		return
+	}
+
+	// No limit provided: return full history
 	ld, err := database.GetTrackerLocationHistory(id)
+func parseTimeQuery(v string) (int64, error) {
+	// Try RFC3339 first
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t.Unix(), nil
+	}
+	// Fallback: int64 unix seconds
+	if sec, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return sec, nil
+	}
+	return 0, fmt.Errorf("invalid time")
+}
 	if err != nil {
 		c.IndentedJSON(http.StatusNotFound, gin.H{"result": "No location entry found"})
 		return
@@ -514,8 +603,6 @@ func getTrackerLocations(c *gin.Context) {
 	}
 	c.IndentedJSON(http.StatusOK, lh)
 }
-
-func requestLocation(c *gin.Context) {}
 
 // @Summary      Send command
 // @Description  Send upstream command to specified tracker, and get tracker response. The request will fail if the tracker is not currently connected. Additionally the request may timeout, if the tracker is connected but does not response. This can happen if the tracker has entered sleep mode without first closing the TCP connection

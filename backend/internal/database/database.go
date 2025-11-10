@@ -1,12 +1,13 @@
 package database
 
 import (
-	"banjo.dev/trackerr/internal/model"
 	"database/sql"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"strings"
+
+	"banjo.dev/trackerr/internal/model"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const file string = "database.db"
@@ -25,7 +26,7 @@ func GetTrackerLocationHistory(trackerID string) ([]model.Locationdata, error) {
 	// Create and run SQL query
 	rows, err := db.Query("SELECT * FROM location_data WHERE trackerId = ?", trackerID)
 	if err != nil {
-		return ld, fmt.Errorf("No history found for tracker:%v", err)
+		return ld, fmt.Errorf("no history found for tracker:%v", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -39,13 +40,58 @@ func GetTrackerLocationHistory(trackerID string) ([]model.Locationdata, error) {
 	return ld, nil
 }
 
+// GetTrackerLocationHistoryRange returns location records between [start,end] (inclusive)
+// start and end are Unix seconds. Results are ordered by timestamp ascending.
+func GetTrackerLocationHistoryRange(trackerID string, start int64, end int64) ([]model.Locationdata, error) {
+	var ld []model.Locationdata
+	// Ensure end >= start
+	if end < start {
+		tmp := start
+		start = end
+		end = tmp
+	}
+	rows, err := db.Query("SELECT entryId,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", trackerID, start, end)
+	if err != nil {
+		return ld, fmt.Errorf("No history found for tracker:%v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i model.Locationdata
+		if err := rows.Scan(&i.EntryId, &i.TrackerId, &i.Timestamp, &i.Lat, &i.Lon, &i.Speed, &i.Heading); err != nil {
+			log.Fatal(err)
+		}
+		ld = append(ld, i)
+	}
+	return ld, nil
+}
+
+// GetTrackerLocationHistoryLimit returns the latest `limit` location records for the given trackerID,
+// ordered by timestamp descending (most recent first).
+func GetTrackerLocationHistoryLimit(trackerID string, limit int) ([]model.Locationdata, error) {
+	var ld []model.Locationdata
+	// Create and run SQL query - order by timestamp descending and limit the number of rows
+	rows, err := db.Query("SELECT entryId,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? ORDER BY timestamp DESC LIMIT ?", trackerID, limit)
+	if err != nil {
+		return ld, fmt.Errorf("no history found for tracker:%v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i model.Locationdata
+		if err := rows.Scan(&i.EntryId, &i.TrackerId, &i.Timestamp, &i.Lat, &i.Lon, &i.Speed, &i.Heading); err != nil {
+			log.Fatal(err)
+		}
+		ld = append(ld, i)
+	}
+	return ld, nil
+}
+
 func GetLocation(TrackerID string) (model.Locationdata, error) {
 	var ld model.Locationdata
 	// Create and run SQL query
 	row := db.QueryRow("SELECT timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? ORDER BY timestamp DESC LIMIT 1", TrackerID)
 	if err := row.Scan(&ld.Timestamp, &ld.Lat, &ld.Lon, &ld.Speed, &ld.Heading); err != nil {
 		if err == sql.ErrNoRows {
-			return ld, fmt.Errorf("No location entry found for tracker: %v", err)
+			return ld, fmt.Errorf("no location entry found for tracker: %v", err)
 		}
 		log.Fatal(err)
 	}
@@ -56,7 +102,7 @@ func InsertLocationRecord(ld model.Locationdata) error {
 	// Create and run SQL query
 	_, err := db.Exec("INSERT INTO location_data (trackerId,timestamp,lat,lon,speed,heading) VALUES (?,?,?,?,?,?)", ld.TrackerId, ld.Timestamp, ld.Lat, ld.Lon, ld.Speed, ld.Heading)
 	if err != nil {
-		return fmt.Errorf("Failed to insert location record: %v", err)
+		return fmt.Errorf("failed to insert location record: %v", err)
 	}
 	return nil
 }
@@ -68,7 +114,7 @@ func GetUserByAPIKey(apikey string) (model.User, error) {
 	row := db.QueryRow("SELECT id,name,apikey,admin,enabled FROM users WHERE apikey = ?", apikey)
 	if err := row.Scan(&user.Id, &user.Name, &user.Apikey, &user.Admin, &user.Enabled); err != nil {
 		if err == sql.ErrNoRows {
-			return user, fmt.Errorf("User not found: %v", err)
+			return user, fmt.Errorf("user not found: %v", err)
 		}
 		log.Fatal(err)
 	}
@@ -91,7 +137,7 @@ func GetTrackersByUserAndTrackerId(userId int, trackerId string) []model.Tracker
 func GetTrackerByName(name string) (model.TrackerWithLocation, error) {
 	trackers := GetTrackersByFilter(" WHERE t.name = ?", []interface{}{name})
 	if len(trackers) == 0 {
-		return model.TrackerWithLocation{}, fmt.Errorf("Requested tracker was not found")
+		return model.TrackerWithLocation{}, fmt.Errorf("requested tracker was not found")
 	}
 	return trackers[0], nil
 }
@@ -99,7 +145,7 @@ func GetTrackerByName(name string) (model.TrackerWithLocation, error) {
 func GetTracker(TrackerID string) (model.TrackerWithLocation, error) {
 	trackerSplice := GetTrackersByFilter(" WHERE t.id = ?", []interface{}{TrackerID})
 	if len(trackerSplice) != 1 {
-		return model.TrackerWithLocation{}, fmt.Errorf("Requested tracker was not found")
+		return model.TrackerWithLocation{}, fmt.Errorf("requested tracker was not found")
 
 	}
 	return trackerSplice[0], nil
@@ -196,12 +242,12 @@ func DeregisterTracker(TrackerID string) error {
 	// Create and run SQL query
 	res, err := db.Exec("DELETE FROM trackers WHERE id = ?", TrackerID)
 	if err != nil {
-		return fmt.Errorf("Failed to remote tracker from database: %v", err)
+		return fmt.Errorf("failed to remove tracker from database: %v", err)
 	}
 
 	rowsAffected, err := res.RowsAffected()
 	if err != nil || rowsAffected != 1 {
-		return fmt.Errorf("Rows affected is not equal to 1: %v", err)
+		return fmt.Errorf("rows affected is not equal to 1: %v", err)
 	}
 
 	return nil
@@ -215,7 +261,7 @@ func SetTrackerEnabled(TrackerID string, enabledBool bool) error {
 	// Create and run SQL query
 	_, err := db.Exec("UPDATE trackers SET enabled = ? WHERE id = ?", enabled, TrackerID)
 	if err != nil {
-		return fmt.Errorf("Failed to update enabled state of %v: %v", TrackerID, err)
+		return fmt.Errorf("failed to update enabled state of %v: %v", TrackerID, err)
 	}
 	return nil
 
@@ -225,7 +271,7 @@ func UpdateLastConnected(TrackerID string, timestamp int64) error {
 	// Create and run SQL query
 	_, err := db.Exec("UPDATE trackers SET lastConnected = ? WHERE id = ?", timestamp, TrackerID)
 	if err != nil {
-		return fmt.Errorf("Failed to update last connected property of %v: %v", TrackerID, err)
+		return fmt.Errorf("failed to update last connected property of %v: %v", TrackerID, err)
 	}
 	return nil
 }
@@ -257,7 +303,7 @@ func CreateModel(m model.Model) error {
 	// Create and run SQL query
 	_, err := db.Exec("INSERT INTO models (name,init_commands,success_keywords) VALUES (?,?,?)", m.Name, m.Init_commands, m.Success_keywords)
 	if err != nil {
-		return fmt.Errorf("Failed to create model: %v", err)
+		return fmt.Errorf("failed to create model: %v", err)
 	}
 	return nil
 }
@@ -279,7 +325,7 @@ func DeleteModel(name string) error {
 	// Create and run SQL query
 	_, err := db.Exec("DELETE FROM models WHERE name = ?", name)
 	if err != nil {
-		return fmt.Errorf("Failed to remote tracker from database: %v", err)
+		return fmt.Errorf("failed to remove model from database: %v", err)
 	}
 	return nil
 }
@@ -291,7 +337,7 @@ func FetchAuthCode(trackerId string) (model.AuthCode, error) {
 	row := db.QueryRow("SELECT trackerId,code from jt808_authcodes WHERE trackerId = ?", trackerId)
 	if err := row.Scan(&ac.TrackerId, &ac.Code); err != nil {
 		if err == sql.ErrNoRows {
-			return ac, fmt.Errorf("No auth code found for tracker: %v", err)
+			return ac, fmt.Errorf("no auth code found for tracker: %v", err)
 		}
 		log.Fatal(err)
 	}
@@ -302,7 +348,7 @@ func SaveAuthCode(t model.AuthCode) error {
 	// Create and run SQL query
 	_, err := db.Exec("INSERT OR REPLACE INTO jt808_authcodes (trackerId,code) VALUES (?,?)", t.TrackerId, t.Code)
 	if err != nil {
-		return fmt.Errorf("Failed to insert auth code into database: %v", err)
+		return fmt.Errorf("failed to insert auth code into database: %v", err)
 	}
 	return nil
 }
@@ -311,7 +357,7 @@ func RemoveAuthCode(trackerId string) error {
 	// Create and run SQL query
 	_, err := db.Exec("DELETE FROM jt808_authcodes WHERE trackerId = ?", trackerId)
 	if err != nil {
-		return fmt.Errorf("Failed to remove authcode from database: %v", err)
+		return fmt.Errorf("failed to remove authcode from database: %v", err)
 	}
 	return nil
 }

@@ -1,10 +1,11 @@
 package utils
 
 import (
-	"banjo.dev/trackerr/internal/model"
 	"fmt"
 	"io"
 	"time"
+
+	"banjo.dev/trackerr/internal/model"
 )
 
 // Coorinate precision to convert all coordinates to

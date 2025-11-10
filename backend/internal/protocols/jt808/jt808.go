@@ -1,9 +1,6 @@
 package jt808
 
 import (
-	"banjo.dev/trackerr/internal/database"
-	"banjo.dev/trackerr/internal/model"
-	"banjo.dev/trackerr/internal/utils"
 	"bytes"
 	b64 "encoding/base64"
 	"encoding/binary"
@@ -14,6 +11,10 @@ import (
 	"math/rand"
 	"net"
 	"time"
+
+	"banjo.dev/trackerr/internal/database"
+	"banjo.dev/trackerr/internal/model"
+	"banjo.dev/trackerr/internal/utils"
 )
 
 // JT808 specific constants
@@ -47,10 +48,10 @@ const (
 func PerformAuth(conn net.Conn, p model.Packet) (string, error) {
 	// Abort if first packet is not registration nor authentication
 	if p.PacketType != MsgTypeRegistrion && p.PacketType != MsgTypeAuth {
-		return "", fmt.Errorf("Expected registion or authentication request but received:", p.PacketType)
+		return "", fmt.Errorf("expected registration or authentication request but received: %v", p.PacketType)
 	}
 
-	buf := bytes.NewBuffer([]byte{})
+	var buf *bytes.Buffer
 	trackerID := p.DeviceID
 	authcode := make([]byte, 12)
 	if p.PacketType == MsgTypeRegistrion {
@@ -69,7 +70,7 @@ func PerformAuth(conn net.Conn, p model.Packet) (string, error) {
 			//buf.Write(authcode)
 
 			SendMsg(conn, MsgTypeTermRegistrationRes, buf.Bytes(), 0, trackerID)
-			return "", fmt.Errorf("Failed to store auth code in database. This may be because tracker %v it is not registered\n", trackerID)
+			return "", fmt.Errorf("failed to store auth code in database. this may be because tracker %v it is not registered", trackerID)
 		}
 
 		// Create and send registration response
@@ -81,12 +82,12 @@ func PerformAuth(conn net.Conn, p model.Packet) (string, error) {
 		// Try to read authentication message
 		conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		utils.ReadBytes(conn, 1) // skip start byte
-		p, err = ParseMsg(conn, utils.NullTime{time.Duration(60), true})
+		p, err = ParseMsg(conn, utils.NullTime{Time: 60 * time.Second, IsSet: true})
 		if err != nil {
-			return "", fmt.Errorf("Failed to parse authentication request")
+			return "", fmt.Errorf("failed to parse authentication request")
 		}
 		if p.PacketType != MsgTypeAuth {
-			return "", fmt.Errorf("Expected authentiction request packet but received:", p.PacketType)
+			return "", fmt.Errorf("expected authentication request packet but received: %v", p.PacketType)
 		}
 	} else {
 		// Received authentication message
@@ -95,16 +96,16 @@ func PerformAuth(conn net.Conn, p model.Packet) (string, error) {
 		// Send response indicating incorrect information
 		if err != nil {
 			SendUniversalRes(conn, MsgTypeAuth, p.SerialNumber, ResultIncorrectInformation, trackerID)
-			return "", fmt.Errorf("Failed to fetch auth code for %v: %v", trackerID, err)
+			return "", fmt.Errorf("failed to fetch auth code for %v: %v", trackerID, err)
 		}
 		authcode, _ = b64.StdEncoding.DecodeString(ac.Code)
 	}
 
 	// Indicate failure if authcode does not match
 	if !bytes.Equal(authcode, p.Payload) {
-		log.Println("Recevied wrong auth code")
+		log.Println("received wrong auth code")
 		SendUniversalRes(conn, MsgTypeAuth, p.SerialNumber, ResultFailure, trackerID)
-		return "", fmt.Errorf("Recevied wrong auth code")
+		return "", fmt.Errorf("received wrong auth code")
 	}
 	log.Println("Received valid authcode from device")
 	SendUniversalRes(conn, MsgTypeAuth, p.SerialNumber, ResultSuccess, trackerID)
@@ -121,7 +122,7 @@ func ParseMsg(conn net.Conn, maxWait utils.NullTime) (model.Packet, error) {
 	}
 	header, err := readBytesAndEscape(conn, 12)
 	if err != nil {
-		return p, fmt.Errorf("Failed to read header: %v", err)
+		return p, fmt.Errorf("failed to read header: %v", err)
 	}
 
 	// Map message id as packet type
@@ -133,12 +134,12 @@ func ParseMsg(conn net.Conn, maxWait utils.NullTime) (model.Packet, error) {
 	// Read payload
 	p.Payload, err = readBytesAndEscape(conn, int(p.PayloadLength))
 	if err != nil {
-		return p, fmt.Errorf("Failed to read payload: %v", err)
+		return p, fmt.Errorf("failed to read payload: %v", err)
 	}
 
 	trailer, err := readBytesAndEscape(conn, 2)
 	if err != nil {
-		return p, fmt.Errorf("Failed to read trailer: %v", err)
+		return p, fmt.Errorf("failed to read trailer: %v", err)
 	}
 	errorCheck := trailer[0]
 
@@ -150,13 +151,13 @@ func ParseMsg(conn net.Conn, maxWait utils.NullTime) (model.Packet, error) {
 	// Validate error code
 	xordata := buf.Bytes()
 	if xorbytes(xordata) != errorCheck {
-		return p, fmt.Errorf("Invalid error check code. %v results in %v which is not equal to %v", xordata, xorbytes(xordata), errorCheck)
+		return p, fmt.Errorf("invalid error check code. %v results in %v which is not equal to %v", xordata, xorbytes(xordata), errorCheck)
 	}
 
 	// Valdite end flag, which must be 0x7e
 	endflag := trailer[1]
 	if endflag != EndByte {
-		return p, fmt.Errorf("Invalid end byte")
+		return p, fmt.Errorf("invalid end byte")
 	}
 	return p, nil
 }
@@ -202,7 +203,6 @@ func SendMsg(conn net.Conn, msgtype uint16, payload []byte, serialnum uint16, tr
 	escapedRes = append(append([]byte{0x7e}, escapedRes...), 0x7e)
 	// Send buffer to client
 	conn.Write(escapedRes)
-	return
 }
 
 // Send jt808 upstream command
