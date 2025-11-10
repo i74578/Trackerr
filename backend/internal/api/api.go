@@ -1,11 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"maps"
 	"net/http"
 	"os"
-	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -581,17 +581,6 @@ func getTrackerLocations(c *gin.Context) {
 
 	// No limit provided: return full history
 	ld, err := database.GetTrackerLocationHistory(id)
-func parseTimeQuery(v string) (int64, error) {
-	// Try RFC3339 first
-	if t, err := time.Parse(time.RFC3339, v); err == nil {
-		return t.Unix(), nil
-	}
-	// Fallback: int64 unix seconds
-	if sec, err := strconv.ParseInt(v, 10, 64); err == nil {
-		return sec, nil
-	}
-	return 0, fmt.Errorf("invalid time")
-}
 	if err != nil {
 		c.IndentedJSON(http.StatusNotFound, gin.H{"result": "No location entry found"})
 		return
@@ -666,4 +655,17 @@ func getActiveHandlersId() []string {
 	keys := maps.Keys(tm.Handlers)
 	tm.Mu.Unlock()
 	return slices.Collect(keys)
+}
+
+// parseTimeQuery parses either RFC3339 string or unix seconds into epoch seconds
+func parseTimeQuery(v string) (int64, error) {
+	// Try RFC3339 first
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t.Unix(), nil
+	}
+	// Fallback: int64 unix seconds
+	if sec, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return sec, nil
+	}
+	return 0, fmt.Errorf("invalid time")
 }
