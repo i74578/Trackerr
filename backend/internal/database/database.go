@@ -50,6 +50,8 @@ func GetTrackerLocationHistoryRange(trackerID string, start int64, end int64) ([
 		start = end
 		end = tmp
 	}
+	// Print query for debugging
+	log.Printf("Executing query: SELECT id,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", trackerID, start, end)
 	rows, err := db.Query("SELECT id,trackerId,timestamp,lat,lon,speed,heading FROM location_data WHERE trackerId = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", trackerID, start, end)
 	if err != nil {
 		return ld, fmt.Errorf("no history found for tracker: %v", err)

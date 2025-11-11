@@ -77,21 +77,27 @@ function updateTrackerCardCheckbox(tracker, checked){
 */
 function handleGoToTracker(button){
     const id = button.closest(".tracker-card").dataset.id;
-    let t = trackers.get(id);
-    if (t.Lat == 0){
-        window.alert("There is no available location data for selected tracker")
-    }
-    else {
-        // history range selection
-        const windowMs = getSelectedRangeWindowMs();
-        if (windowMs === 0){
-            stopPlayback();
-            zoomToTracker(t);
-            return;
-        }
-        showHistoryAndAnimateByWindow(t, windowMs);
-    }
+    focusOrPlayTrackerById(id);
+}
 
+// Unified behavior for selecting a tracker: highlight in sidebar and either focus map or play history
+function focusOrPlayTrackerById(id){
+    let t = trackers.get(id);
+    if (!t){ return; }
+    if (t.Lat == 0){
+        window.alert("There is no available location data for selected tracker");
+        return;
+    }
+    // Mark as selected in sidebar
+    selectTrackerCard(id);
+    // history range selection
+    const windowMs = getSelectedRangeWindowMs();
+    if (windowMs === 0){
+        stopPlayback();
+        zoomToTracker(t);
+        return;
+    }
+    showHistoryAndAnimateByWindow(t, windowMs);
 }
 
 /**
@@ -137,15 +143,7 @@ function createTrackerCard(tracker){
     <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
         Last position update: ${formatTimestamp(tracker.Timestamp)}
     </p>
-    <a
-        onclick = "handleGoToTracker(this)"
-        class="flex items-center text-indigo-600 text-sm font-medium hover:underline focus:outline-none"
-        href="#">
-        <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M10 3a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H3a1 1 0 110-2h6V4a1 1 0 011-1z"/>
-        </svg>
-        Go to tracker
-    </a>
+    
 </div>
 <label class="mt-4 flex items-center text-sm text-gray-700 dark:text-gray-300">
     <input
@@ -157,6 +155,11 @@ function createTrackerCard(tracker){
     <span class="ml-2">Show on map</span>
 </label>
 </div>`;
+    // Make the whole card clickable (excluding interactive controls) to focus/play
+    card.addEventListener('click', (e) => {
+        if (e.target.closest('input,button,a,select,label,svg,path')) return;
+        focusOrPlayTrackerById(tracker.Id);
+    });
     return card;
 }
 
@@ -186,6 +189,21 @@ function updateSidebarTable(tracker){
     const row = document.querySelector(`div[data-id="${tracker.Id}"]`);
     if (row != null){
         row.querySelectorAll('p')[1].textContent = "Last position update: " + formatTimestamp(tracker.Timestamp);
+    }
+}
+
+// Sidebar selection helpers
+function clearSelectedTrackerCards(){
+    document.querySelectorAll('.tracker-card.selected').forEach(el => el.classList.remove('selected'));
+}
+
+function selectTrackerCard(trackerId){
+    clearSelectedTrackerCards();
+    const el = document.querySelector(`.tracker-card[data-id="${trackerId}"]`);
+    if (el){
+        el.classList.add('selected');
+        // Ensure visibility in sidebar
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 }
 
@@ -303,6 +321,8 @@ function startPlayback(tracker, latlngs, rawPoints){
     updatePlaybackPanel(true, tracker);
     // Hide other trackers' polylines while this playback is active
     hideOtherTrackersPolylines(tracker.Id);
+    // Mark selected in sidebar
+    selectTrackerCard(tracker.Id);
     scheduleNextFrame();
 }
 
