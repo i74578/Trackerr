@@ -301,6 +301,8 @@ function startPlayback(tracker, latlngs, rawPoints){
     if (tracker.Visible){ playback.marker.addTo(map); }
     // Show panel
     updatePlaybackPanel(true, tracker);
+    // Hide other trackers' polylines while this playback is active
+    hideOtherTrackersPolylines(tracker.Id);
     scheduleNextFrame();
 }
 
@@ -333,6 +335,8 @@ function togglePlayback(){
 function stopPlayback(){
     clearTimeout(playback.timerId);
     if (playback.marker){ playback.marker.remove(); }
+    // Restore any previously hidden polylines
+    restoreHiddenPolylines();
     playback = { trackerId: null, latlngs: [], rawPoints: [], index: 0, playing: false, timerId: null, speed: 1, marker: null };
     updatePlaybackPanel(false);
 }
@@ -400,6 +404,26 @@ function stepBack(){
     if (!playback.latlngs.length) return;
     if (playback.playing){ playback.playing = false; updatePlayPauseButton(); }
     stepToIndex(playback.index - 1);
+}
+
+// Hide polylines for trackers other than the active playback tracker
+function hideOtherTrackersPolylines(activeId){
+    trackers.forEach((t) => {
+        if (t.Id !== activeId && t.Polyline && !t.PolylineHiddenDueToPlayback){
+            if (t.Visible){ t.Polyline.remove(); }
+            t.PolylineHiddenDueToPlayback = true;
+        }
+    });
+}
+
+// Restore polylines hidden due to playback
+function restoreHiddenPolylines(){
+    trackers.forEach((t) => {
+        if (t.PolylineHiddenDueToPlayback){
+            if (t.Visible && t.Polyline){ t.Polyline.addTo(map); }
+            delete t.PolylineHiddenDueToPlayback;
+        }
+    });
 }
 
 // Optional: keyboard shortcuts for stepping
