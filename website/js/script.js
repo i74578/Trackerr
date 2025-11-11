@@ -1,4 +1,4 @@
-const baseurl = "";
+const baseurl = "<insert_base_url_here>";
 const apiKey = new URLSearchParams(document.location.search).get("api-key");
 
 // Leaflet map
@@ -381,7 +381,8 @@ function stepToIndex(newIndex){
     const info = document.getElementById('pointInfo');
     if (info && playback.rawPoints.length){
         const r = playback.rawPoints[playback.index];
-        const ts = r.Timestamp ? new Date(r.Timestamp).toLocaleString() : '';
+        // Force 24h format using locale options (da-DK already is 24h, but being explicit).
+        const ts = r.Timestamp ? new Date(r.Timestamp).toLocaleString('da-DK', { hour12: false }) : '';
         const sp = r.Speed != null ? ` • speed: ${r.Speed}` : '';
         const hd = r.Heading != null ? ` • heading: ${r.Heading}` : '';
         info.textContent = `Point ${playback.index+1}/${playback.latlngs.length} • ${ts}${sp}${hd}`;
